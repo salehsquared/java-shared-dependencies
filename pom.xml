@@ -130,7 +130,7 @@
         <artifactId>google-cloud-core-bom</artifactId>
         <version>${google.core.version}</version>
         <type>pom</type>
-        <scope>import</scope>
+        <scope>compile</scope>
       </dependency>
       <dependency>
         <groupId>com.google.auth</groupId>
