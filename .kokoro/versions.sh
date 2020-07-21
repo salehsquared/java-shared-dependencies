@@ -32,12 +32,22 @@ export MAVEN_OPTS="-Xmx1024m -XX:MaxPermSize=128m"
 mvn -B dependency:analyze -DfailOnWarning=true
 
 function versionsCheck() {
- msg "Comparing dependencies with google-cloud shared BOM..."
+ #Grab the dependencyManagement section, turn them into dependencies, and use those
+ #to compare with the online version.
+ before_depM="$(sed -n '/dependencyManagement/q;p' pom.xml)"
+ new_deps="$(sed '1,/dependencyManagement/d' pom.xml | sed -n '/dependencyManagement/q;p' | sed '/<!--/d')"
+ line_to_add=$(grep -n -m 1 'dependencyManagement' pom.xml | cut -d: -f1)
+ after_depM="$(sed -n "${line_to_add}"',$p' pom.xml)"
+ #Concatenate before starting depM section, new deps, and after starting depM section.
+ complete_file=$before_depM$new_deps$after_depM
+ echo "$complete_file" > .temp-pom.xml
+ msg "Comparing dependency management versions with latest google-cloud shared BOM..."
  #Use versions plugin, specifying our remote POM as the most recent shared dependencies BOM.
  #Filter out any lines that don't have anything to do with our dependency version differences.
  #Remove duplicate lines.
  #If we list 'none' for our different dependencies versions, filter it for an empty file.
- mvn versions:compare-dependencies -f pom.xml -DremotePom=com.google.cloud:google-cloud-shared-dependencies:LATEST | sed -n '/The following property differences were found:/q;p' | sed '1,/The following differences/d' | awk '!seen[$0]++' | grep -vw 'none' >.versions.txt
+ mvn versions:compare-dependencies -f .temp-pom.xml -DremotePom=com.google.cloud:google-cloud-shared-dependencies:LATEST | sed -n '/The following property differences were found:/q;p' | sed '1,/The following differences/d' | awk '!seen[$0]++' | grep -vw 'none' >.versions.txt
+ rm -f .temp-pom.xml
  #If the file is empty.
  if ! [ -s .versions.txt ]
  then
@@ -53,18 +63,10 @@ function versionsCheck() {
 # Allow failures to continue running the script
 set +e
 
-error_count=0
-for path in $(find -name ".flattened-pom.xml")
-do
-  # Check flattened pom in each dir that contains it for completeness
-  dir=$(dirname "$path")
-  pushd "$dir"
-  versionsCheck "$dir"
-  error_count=$(($error_count + $?))
-  popd
-done
+dir=$(dirname "./pom.xml")
+versionsCheck "$dir"
 
-if [[ $error_count == 0 ]]
+if [[ $? == 0 ]]
 then
   msg "All checks passed."
   exit 0
